@@ -27,6 +27,15 @@ class Camera:
                     [0, 0, 1]])
     
     def set_external(self, cam_coords, cam_rotation):
+        """Setup external parameters of the camera. Each photo has different externals.
+
+        Parameters
+        ----------
+        cam_coords : tuple of shape (EASTING, NORTHING, H_ORTHO)
+            
+        cam_rotation : tuple of shape (OMEGA, PHI, KAPPA)
+            Expressed in degrees
+        """
         self.t = np.array(cam_coords).reshape(3,1)
         self.omega, self.phi, self.kappa = np.radians(cam_rotation)
 
@@ -46,23 +55,66 @@ class Camera:
         self.R = np.matmul(R_tmp, self.R_x)
 
     def world_to_camera_frame(self, x, y, z):
+        """Converts a point coordinate from world frame to the camera frame
+
+        Parameters
+        ----------
+        x : float
+            Refers to EASTING
+        y : float
+            Refers to NORTHING
+        z : float
+            Refers to H_ORTHO
+
+        Returns
+        -------
+        np.ndarray (3,1)
+
+        """
         P_world = np.array([x, y, z]).reshape(3,1)
         P_camera = np.matmul(self.R,(P_world - self.t))
         return P_camera
 
     def camera_frame_to_pixel(self, P_camera):
+        """Converts a point coordinate from the camera frame to the world frame
+
+        Parameters
+        ----------
+        P_camera : np.ndarray (3,1)
+
+        Returns
+        -------
+        uv: np.ndarray (2,1)
+            Pixel coordinates of the point in the camera frame.
+            u: x pixel coordinates
+            v: y pixel coordinates
+            The center of the image is in the top left corner
+        """
         P_pixel = np.matmul(self.K, P_camera)
         uv = (P_pixel / P_pixel[2][0])[:-1]
         uv[1] = self.height - uv[1] #check if this is working with offset
         return uv
     
     def camera_frame_to_world(self, x, y, z):
+        """The opposite of camera_world_to_frame
+        """
         R_inv = np.linalg.inv(self.R)
         P_camera = np.array([x, y, z]).reshape(3,1)
         P_world = np.matmul(R_inv,P_camera) + self.t
         return P_world
     
     def get_coordinates_bb(self, world_depth): #world depth is aproximate, depends on the orientation of the camera (is referred to the camrea depth)
+        """Get the bounding box of a rectangle at a specific world depth which enters in the camera
+
+        Parameters
+        ----------
+        world_depth : float
+    
+        Returns
+        -------
+        tuple, tuple
+            Two corners of the rectangle. (EASTING, NORTHING, H_ORTHO)
+        """
         camera_depth = world_depth - self.t[2][0]
         right = self.width / 2 - self.x_offset
         left = - (self.width-right)
@@ -74,7 +126,21 @@ class Camera:
         return (bb_C[0],bb_C[2],camera_depth), (bb_C[1],bb_C[3],camera_depth)
 
         
-    def polyline_to_pixel(self, polyline): 
+    def polyline_to_pixel(self, polyline):
+        """Given a polyline expressed in world coordinates, it transforms it into camera pixel coordinates.
+
+        Parameters
+        ----------
+        polyline : np.ndarray (N,3)
+            Where N correspond to the number of points defining the polyline.
+            The coordinates are in the order (EASTING, NORTHING, H_ORTHO)
+
+        Returns
+        -------
+        np.ndarray (N,2)
+            Theb coordinates are in the order (u,v) where u correspond to the x pixel coordinates and
+            v to the y pixel coordinates. The center of the image is considered in the top left corner.
+        """
         points_number = polyline.shape[0]
         pixels = []
         for i in range(points_number):
@@ -88,6 +154,25 @@ class Dxf():
         self.dxf = ezdxf.readfile(dxf_path)
     
     def get_polylines(self, ids, query, corner1, corner2):
+        """Get all the polylines that fall into a rectangle identified by two corners in the
+        world reference frame.
+
+        Parameters
+        ----------
+        ids : List of strings
+            Refer to the id of the polyline. Different ids refers to different structures. 
+            ex. ["31110000"] refers to public building in our data.
+        query : List of strings
+            Refer to the type of lines in which we are interested.
+            ex. ["LWPOLYLINE","POLYLINE"]
+        corner1 : tuple (EASTING, NORTHING, H_ORTHO)
+        corner2 : tuple (EASTING, NORTHING, H_ORTHO)
+
+        Returns
+        -------
+        List of np.ndarray of shape (N,3) where N is the number of corners in the considered polyline
+
+        """
         #Corner1 and corner2 must be in WRS
         min_x = min(corner1[0],corner2[0])
         min_y = min(corner1[1],corner2[1])
@@ -111,6 +196,15 @@ class Dxf():
         return polylines
     
     def get_buffer(self):
+        """
+        Get the polyline of the buffer. It is used in order to mask the regions in which ground truth data
+        is not avaiable.
+        The dxf must be a 1 polygon buffer.
+
+        Returns
+        -------
+        np.ndarray (N,3) where N is the number of corners in the polyline
+        """
         msp = self.dxf.modelspace()
         if len(msp) != 1:
             print("The dxf is not a buffer")
@@ -118,7 +212,9 @@ class Dxf():
         return np.array(list(msp[0].points())) 
 
 class Dsm():
-    
+    """
+    Class that describes the LIDAR data.
+    """
     def __init__(self, tif_path):
         tfw_path = tif_path.replace(".tif", ".tfw")
         self.x_pixel_size,  _, _, self.y_pixel_size, self.easting, self.northing = self.read_tfw(tfw_path)
@@ -131,6 +227,16 @@ class Dsm():
         return [float(raw.strip()) for raw in raws]
     
     def get_parallelepiped_vertices(self):
+        """
+        Get the two corners of the prallelepiped which contains all the LIDAR points.
+
+        Returns
+        -------
+        np.ndarray (2,3)
+            Where 2 is the number of the corners and 3 refers to the corners coordinates in world reference
+            frame (EASTING, NORTHING, H_ORTHO)
+
+        """
         max_height = np.max(self.tif_model)
         self.tif_model = np.where(self.tif_model == -32767., np.inf, self.tif_model)
         min_height = np.min(self.tif_model)
@@ -163,6 +269,22 @@ class AerialPicture(): # TODO implement function that looks for the internals pa
         self.cam.set_external(*self.get_external_parameters(dbfs_path))
 
     def get_external_parameters(self, dbfs_folder_path):
+        """Get the external parameters for the considered image
+
+        Parameters
+        ----------
+        dbfs_folder_path : String
+            Path that points to the path which contains all the dbf files. Each dbf file contains the external
+            parameters of multiple images.
+
+        Returns
+        -------
+        Tuple, Tuple
+            cam_coords are the coordinates of the camera center in world reference frame 
+                (EASTING, NORTHING, HORTHO)
+            cam_rotations are the rotations of the camera reference frame wrt world reference frame
+                (OMEGA, PHI, KAPPA)
+        """
         dbf_file_names = [name for name in os.listdir(dbfs_folder_path) if ".dbf" in name]
         for dbf_name in dbf_file_names:
             dbf_path = os.path.join(dbfs_folder_path, dbf_name)
@@ -188,6 +310,21 @@ class AerialPicture(): # TODO implement function that looks for the internals pa
             return self.depth_mask
 
     def build_depth_mask(self, models_folder):
+        """
+        Builds the mask of the iamge using the values from the LIDAR data.
+        Projects each point identified by the LIDAR (x, y, z) to the image plane, thus creating
+        a mask. The values of the mask are given by z.
+        The resulting mask is a sparse matrix.
+
+        Parameters
+        ----------
+        models_folder : String
+            Path pointing to the folder containing all the tif and tfw files of the LIDAR data.
+
+        Returns
+        -------
+        np.ndarray (W,H,1) of type np.float32
+        """
         valid_models = self.get_valid_models(models_folder)
         if valid_models == []:
             print(f"No valid model found for the image {self.img_basename}")
@@ -213,6 +350,17 @@ class AerialPicture(): # TODO implement function that looks for the internals pa
         return mask
 
     def get_valid_models(self, models_folder):
+        """Get the LIDAR data which could contain a point in the considered image.
+
+        Parameters
+        ----------
+        models_folder : String
+            Path point to the LIDAR data folder
+
+        Returns
+        -------
+        List of Dsm
+        """
         valid_models = []
         models_paths = [os.path.join(models_folder, tif_path) for tif_path in os.listdir(models_folder) if ".tif" in tif_path]
         for tif_path in models_paths:
@@ -225,6 +373,17 @@ class AerialPicture(): # TODO implement function that looks for the internals pa
         return valid_models
 
     def get_rooftop_mask(self, raster):
+        """Retrive the relative mask of the rooftops.
+
+        Parameters
+        ----------
+        raster : Dxf
+
+        Returns
+        -------
+        np.ndarray of type np.uint8
+            Mask in which 1 is rooftop, 0 is not rooftop.
+        """
         corner1, corner2 = self.cam.get_coordinates_bb(world_depth= 0)
         corner1, corner2 = self.cam.camera_frame_to_world(*corner1), self.cam.camera_frame_to_world(*corner2)
         polylines = raster.get_polylines(ROOFTOP_IDS, ["POLYLINE","LWPOLYLINE"], corner1, corner2)
@@ -234,6 +393,28 @@ class AerialPicture(): # TODO implement function that looks for the internals pa
         return get_mask(polylines, polylines_to_remove, self.cam.width, self.cam.height, show= False, objects_value = 1)
 
 def get_mask(polylines, polylines_to_remove, img_width, img_height, show = False, objects_value = 1):
+    """Creates the mask by filling the polylines of the rooftops.
+
+    Parameters
+    ----------
+    polylines : List of np.ndarray (N,2)
+        List of rooftop polylines expressed in pixel coordinates
+    polylines_to_remove : List of np.ndarray (N,2)
+        List of not rooftop polylines that are contained into the rooftops expressed in pixel coordinates
+    img_width : Integer
+        Width of the image
+    img_height : Integer
+        Height of the image
+    show : bool, optional
+        Plot the mask, by default False
+    objects_value : int, optional
+        Value given to the rooftop pixels in the mask, by default 1
+
+    Returns
+    -------
+    np.ndarray (H,W,1) of dtype np.uint8
+
+    """
     mask = np.zeros((img_height, img_width), dtype=np.uint8)
     for polyline_pixel in polylines:
         cv2.fillPoly(mask, np.int32(np.expand_dims(polyline_pixel, axis=0)), objects_value)
@@ -246,6 +427,26 @@ def get_mask(polylines, polylines_to_remove, img_width, img_height, show = False
     return mask
 
 def shadow_image_mask(aerialImage, mask, depth_mask, buffer_path):
+    """
+    Set to 0 all the pixels that fall outside of the buffer. The buffer represents the region of 
+    interest in which ground truth data is avaible.
+
+    Parameters
+    ----------
+    aerialImage : AerialImage
+
+    mask : np.ndarray (H,W,1)
+
+    depth_mask : np.ndarray (H,W,1)
+
+    buffer_path : String
+        Path pointing to the .dxf file of the buffer
+
+    Returns
+    -------
+    Tuple : (image, mask, depth_mask)
+        
+    """
     dxf = Dxf(buffer_path)
     buffer_pixel = aerialImage.cam.polyline_to_pixel(dxf.get_buffer())
     image = aerialImage.image.copy()
@@ -259,6 +460,9 @@ def shadow_image_mask(aerialImage, mask, depth_mask, buffer_path):
     return image, mask, depth_mask
 
 def normalize_non_zero_elements(el):
+    """
+    Normalize all non zero elements in a np.ndarray
+    """
     non_zero_ids = el.nonzero()
     max = np.max(el[non_zero_ids])
     min = np.min(el[non_zero_ids])
@@ -266,7 +470,27 @@ def normalize_non_zero_elements(el):
     return el
 
 def preprocess_mask_image(mask, aerialImage, depth_mask, config):
+    """Preprocess of the images.
+    Set to 0 data without ground truth.
+    Cut image, mask, and depth mask to the smallest size which contains ground truth data.
+    If the LIDAR data is used, it normalize the data and eventually performs interpolation
+    on the sparse values.
 
+    Parameters
+    ----------
+    mask : np.ndarray (H,W,1)
+    aerialImage : AerialImage
+    depth_mask : np.ndarray (H,W,1)
+        It is a sparse matrix
+    config : Config
+
+    Returns
+    -------
+    Tuple
+        mask_cut : np.ndarray (H,W,1) of type np.uint8
+        depth_mask_cut : np.ndarray (H,W,1) of type np.uint8
+        image_cut : np.ndarray (H,W,3) of type np.uint8
+    """
     image, mask, depth_mask = shadow_image_mask(aerialImage, mask, depth_mask, config.buffer_path)
     
     height, width = mask.shape

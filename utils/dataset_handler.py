@@ -8,6 +8,25 @@ import cv2
 from tqdm.auto import tqdm
 
 def preprocess_data(config):
+    """
+      The function takes the input files, such as the iamges and the related camera parameters, 
+      the dxf file containing the rooftops polylines, the dxf file identifying the raster and
+      the tif files relative to the LIDAR data.
+
+      The function calls all the projections functions to produce the output.
+      The preprocessing consists in 
+        -matching images, camera parameters, rooftop polylines and LIDAR data if avaible
+        -cutting the images, masks and LIDAR data to the region in which ground truth data
+         is avaible. Since the depth mask given from the LIDAR data has less resolution, it 
+         can be interpolated.  
+
+      The output is stored in working_dir/preprocessed_data/config.preprocessed_dataset_name
+      and it consist of 3 folders:
+        imgs: contains the original images
+        masks: contains the rooftops ground truth masks
+        depths: contains the masks with LIDAR data
+
+    """
     print("Creating dirs...")
     preprocessed_data_path = os.path.join(config.working_dir, "preprocessed_data")
     os.makedirs(preprocessed_data_path, exist_ok=True)
@@ -22,8 +41,8 @@ def preprocess_data(config):
     os.makedirs(imgs_path, exist_ok=True)
     
     #Compute only images that have never been processed
-    old_imgs_list = os.listdir(os.path.join(config.working_dir, "preprocessed_data", config.preprocessed_dataset_name,"imgs"))
-    imgs_to_process_paths = [path for path in config.images_paths if os.path.basename(path) not in old_imgs_list]
+    old_imgs_list = [path.split(".")[0] for path in os.listdir(os.path.join(config.working_dir, "preprocessed_data", config.preprocessed_dataset_name,"imgs"))]
+    imgs_to_process_paths = [path for path in config.images_paths if os.path.basename(path).split(".")[0] not in old_imgs_list]
 
     if imgs_to_process_paths:
         print("New images to be processed: ", imgs_to_process_paths)
@@ -51,6 +70,15 @@ def preprocess_data(config):
             save_img(cutted_image, os.path.join(imgs_path, img_id + ".png"))
 
 def create_dataset(config):
+    """
+      The function use as input the folder created during the preprocess function and creates
+      the dataset folder ready to use.
+
+      The function rescales the images,masks and depths, crops them and saves them in 
+      working_dir/datasets/config.dataset_name, creating two folders: train and validation.
+      Each split folder contains the folders images,masks and depths as described in the
+      documentation of preprocess_data(config).
+    """
     datasets_path = os.path.join(config.working_dir, "datasets")
     os.makedirs(datasets_path, exist_ok=True)
     dataset_path = os.path.join(datasets_path, config.dataset_name)
@@ -59,6 +87,9 @@ def create_dataset(config):
     os.makedirs(train_split_path, exist_ok=True)
     val_split_path = os.path.join(dataset_path, "val") 
     os.makedirs(val_split_path, exist_ok=True)
+    for split_path in (train_split_path, val_split_path):
+       for data_type in ("images","masks","depths"):
+          os.makedirs(os.path.join(split_path, data_type), exist_ok= True)
     
     preprocessed_data_path = os.path.join(config.working_dir, 
                                           "preprocessed_data", 
@@ -85,18 +116,18 @@ def load_images_masks(element_name, config):
 
   Parameters
   ----------
-  dataset_folder : str
-  samples_names : list of str
-      List of the names of the samples to use
+  element_name : str
+      Name of the image to load without any extension 
 
   Returns
   -------
-  images : np.ndarray
-    Array of shape (N, H, W, 3), where N is the number of images and (H,W) the
-    resolution
-  masks : np.ndarray
-    Array of shape (N, H, W, 1), where N is the number of images and (H,W) the
-    resolution
+  img : np.ndarray
+    Array of shape (1, H, W, 3), where (H,W) is the resolution
+  mask : np.ndarray
+    Array of shape (1, H, W, 1), where (H,W) is the resolution
+  depth : np.ndarray
+    Array of shape (1, H, W, 1), where (H,W) is the resolution
+
   """  
   
   preprocessed_path = os.path.join(config.working_dir, "preprocessed_data", config.preprocessed_dataset_name)
@@ -129,52 +160,6 @@ def load_images_masks(element_name, config):
     depth = depth[np.newaxis, ...]
 
   return img, mask, depth
-
-  if get_depth_mask:
-    depth_path = os.path.join(dataset_folder, get_depth_mask , f'{sample_name}.png')
-  
-  if not infrared:
-    img = img[:, :, :3] 
-  mask = Image.open(mask_path)
-  #print(mask.shape)
-  mask = mask.convert("L")
-  #threshold = 128  # Adjust this threshold value as needed
-  #mask = mask.point(lambda p: p > threshold and 255)
-  mask = np.array(mask)
-
-  if get_depth_mask:
-    depth = Image.open(depth_path)
-    depth_np = np.array(depth)
-    depth = depth.convert("L")
-    depth = np.array(depth)
-
-  if scale_factor != 1:
-    mask = cv2.resize(mask, (mask.shape[1]//scale_factor, mask.shape[0]//scale_factor))
-    mask = (mask > 0).astype(np.uint8)
-    img = cv2.resize(img, (img.shape[1]//scale_factor, img.shape[0]//scale_factor))
-    
-    if get_depth_mask:
-      depth = cv2.resize(depth, (depth.shape[1]//scale_factor, depth.shape[0]//scale_factor))
-
-  if get_depth_mask:
-    depth = depth[..., np.newaxis]
-    depth = depth[np.newaxis, ...]
-  
-  mask = mask[..., np.newaxis]
-  mask = mask[np.newaxis, ...]
-
-  img = img[np.newaxis, ...]
-  """print(mask.shape)
-  mask = np.concatenate([mask, 1-mask], axis=-1)"""
-  #print(mask.shape)
-  images_list.append(img)
-  masks_list.append(mask)
-  depth_list.append(depth)
-
-  #images = np.array(images_list)
-  #masks = np.array(masks_list, dtype= np.uint8)
-
-  return images_list, masks_list, depth_list
 
 
 def crop_images_masks(images, masks, depths, crop_size, step):
@@ -230,6 +215,9 @@ def crop_images_masks(images, masks, depths, crop_size, step):
   return cropped_images, cropped_masks, cropped_depths
 
 def names_in_dataset(config):
+   """
+    Returns the list of the images file names without extension present in the specified dataset.
+   """
    train_images_path = os.path.join(config.working_dir, "datasets", config.dataset_name, "train", "images")
    train_crops_names = os.listdir(train_images_path)
    val_images_path = os.path.join(config.working_dir, "datasets", config.dataset_name, "val", "images")
@@ -238,6 +226,9 @@ def names_in_dataset(config):
    return crops_names_unique
 
 def to_dataset_folder(image_name, config, split):
+  """
+  Load a full image with relative ground truth and/or depth mask, crops them, and stores them.
+  """
   print("Names in dataset: ", names_in_dataset(config), " image name: ", image_name)
   if image_name in names_in_dataset(config):
     print(f"{image_name} already present in {config.dataset_name}, skipping")
@@ -259,6 +250,4 @@ def to_dataset_folder(image_name, config, split):
 
 def save_img(img, path):
     image = Image.fromarray(img)
-    #if image.mode != 'RGB':
-    #    image = image.convert('RGB')
     image.save(path)

@@ -16,7 +16,7 @@ def run_training(config):
     
     checkpoints_folder = os.path.join(config.working_dir, "checkpoints")
     os.makedirs(checkpoints_folder, exist_ok= True)
-    checkpoint_config_folder = os.poath.join(checkpoints_folder, config.config_name)
+    checkpoint_config_folder = os.path.join(checkpoints_folder, config.config_name)
     os.makedirs(checkpoint_config_folder, exist_ok= True)
     callback_checkpoint = ModelCheckpoint(os.path.join(checkpoint_config_folder,'{config.model_name}.{epoch:02d}-{val_binary_accuracy:.4f}.hdf5'), save_weights_only=True,
                                         save_best_only=True, monitor='val_binary_accuracy')
@@ -33,7 +33,7 @@ def run_training(config):
         callback_depth = np.array(Image.open(os.path.join(dataset_path, "depths", crop_name)))
         callback_depth = np.expand_dims(callback_depth, axis= -1)
         callback_im = np.concatenate((callback_im, callback_depth), axis=-1)
-
+    callback_im = callback_im.astype(np.float32) / 255
     display_callback = DisplayCallback(callback_im, callback_mask, 5)
 
     callbacks = [reduce_lr_callback, callback_checkpoint, display_callback]
