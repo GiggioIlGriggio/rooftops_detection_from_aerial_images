@@ -135,7 +135,7 @@ def build_unet(input_shape):
     previous_block_activation = x  # Set aside residual
 
     # Blocks 1, 2, 3 are identical apart from the feature depth.
-    for filters in [64, 128, 256, 512, 1024]:
+    for filters in [64, 128, 256]:
         x = keras.layers.Activation("relu")(x)
         x = keras.layers.SeparableConv2D(filters, 3, padding="same")(x)
         x = keras.layers.BatchNormalization()(x)
@@ -155,7 +155,7 @@ def build_unet(input_shape):
 
     ### [Second half of the network: upsampling inputs] ###
 
-    for filters in [1024, 512, 256, 128, 64, 32]:
+    for filters in [256, 128, 64, 32]:
         x = keras.layers.Activation("relu")(x)
         x = keras.layers.Conv2DTranspose(filters, 3, padding="same")(x)
         x = keras.layers.BatchNormalization()(x)
