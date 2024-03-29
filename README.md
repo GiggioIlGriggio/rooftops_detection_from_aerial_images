@@ -52,6 +52,12 @@ It performs an evaluation of the selected model on the validation data, retrivin
 
 ## Example usage
 
+First intall requirements:
+
+```python
+pip install -r requirements.txt
+```
+
 Data preprocessing
 
 ```
