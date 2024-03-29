@@ -1,6 +1,6 @@
 # rooftops-building-detection
 
-Segmentation of rooftop buildings from aerial images.
+Segmentation of rooftop buildings from aerial images and LIDAR data.
 
 ## Environment
 
