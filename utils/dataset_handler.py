@@ -1,5 +1,6 @@
-from utils.utils import Camera, Dxf, AerialPicture, preprocess_mask_image
-from utils.utils import get_crop_index
+from utils.utils import Camera, Dxf, AerialPicture, preprocess_mask_image, get_crop_index
+from utils.config import Config
+
 
 import os
 import numpy as np
@@ -7,9 +8,11 @@ from PIL import Image
 import cv2
 from tqdm.auto import tqdm
 
+Image.MAX_IMAGE_PIXELS = None
+
 def preprocess_data(config):
     """
-      The function takes the input files, such as the iamges and the related camera parameters, 
+      The function takes the input files, such as the images and the related camera parameters, 
       the dxf file containing the rooftops polylines, the dxf file identifying the raster and
       the tif files relative to the LIDAR data.
 
@@ -27,6 +30,10 @@ def preprocess_data(config):
         depths: contains the masks with LIDAR data
 
     """
+    if config.use_dsm and config.dsm_path == "":
+       print("ERROR. dsm_path must be provided if you want to preprocess LIDAR data!")
+       return
+
     print("Creating dirs...")
     preprocessed_data_path = os.path.join(config.working_dir, "preprocessed_data")
     os.makedirs(preprocessed_data_path, exist_ok=True)
@@ -43,7 +50,9 @@ def preprocess_data(config):
     #Compute only images that have never been processed
     old_imgs_list = [path.split(".")[0] for path in os.listdir(os.path.join(config.working_dir, "preprocessed_data", config.preprocessed_dataset_name,"imgs"))]
     imgs_to_process_paths = [path for path in config.images_paths if os.path.basename(path).split(".")[0] not in old_imgs_list]
-
+    if not imgs_to_process_paths:
+       print(f"All images provided are already preprocessed in {output_path}")
+       return
     if imgs_to_process_paths:
         print("New images to be processed: ", imgs_to_process_paths)
         print("Reading polylines file...")
@@ -52,13 +61,13 @@ def preprocess_data(config):
             print("Creating image object..")
             image = AerialPicture(img_path, config.internals)
             print("Setting externals..")
-            image.set_externals(config.dbfs_paths)
+            image.set_externals(config.dbfs_path)
             print("Creating mask..")
             mask = image.get_rooftop_mask(raster)
             
             if config.use_dsm:
                 print("Getting depth mask..")
-                depth_mask = image.get_depth_mask(config.dsm_paths)
+                depth_mask = image.get_depth_mask(config.dsm_path)
             else:
                 depth_mask = None
             print("Preprocessing data..")
@@ -66,12 +75,13 @@ def preprocess_data(config):
             img_id = image.img_basename
 
             save_img(cutted_mask, os.path.join(masks_path, img_id + ".png"))
-            save_img(cutted_depth_mask, os.path.join(depths_path, img_id + ".png"))
             save_img(cutted_image, os.path.join(imgs_path, img_id + ".png"))
+            if config.use_dsm:
+               save_img(cutted_depth_mask, os.path.join(depths_path, img_id + ".png"))
 
 def create_dataset(config):
     """
-      The function use as input the folder created during the preprocess function and creates
+      The function uses as input the folder created during the preprocess function and creates
       the dataset folder ready to use.
 
       The function rescales the images,masks and depths, crops them and saves them in 
@@ -201,16 +211,19 @@ def crop_images_masks(images, masks, depths, crop_size, step):
   cropped_masks = np.array([masks[:, crop_indices[i][0]:crop_indices[i][0]+crop_size, crop_indices[i][1]:crop_indices[i][1]+crop_size, :] for i in range(len(crop_indices))])
   cropped_masks = np.reshape(cropped_masks, (-1, crop_size, crop_size, 1))
 
-  cropped_depths = np.array([depths[:, crop_indices[i][0]:crop_indices[i][0]+crop_size, crop_indices[i][1]:crop_indices[i][1]+crop_size, :] for i in range(len(crop_indices))])
-  cropped_depths = np.reshape(cropped_depths, (-1, crop_size, crop_size, 1))
-
   #Removing samples without data
   flattened_data = cropped_masks.reshape(cropped_masks.shape[0], -1)
   crop_has_ones = np.any(flattened_data == 1, axis=1)
   valid_crop_indices = np.where(crop_has_ones)[0]
   cropped_images = cropped_images[valid_crop_indices]
   cropped_masks = cropped_masks[valid_crop_indices]
-  cropped_depths = cropped_depths[valid_crop_indices]
+  
+  if depths is not None:
+    cropped_depths = np.array([depths[:, crop_indices[i][0]:crop_indices[i][0]+crop_size, crop_indices[i][1]:crop_indices[i][1]+crop_size, :] for i in range(len(crop_indices))])
+    cropped_depths = np.reshape(cropped_depths, (-1, crop_size, crop_size, 1))
+    cropped_depths = cropped_depths[valid_crop_indices]
+  else:
+    cropped_depths = None
 
   return cropped_images, cropped_masks, cropped_depths
 
@@ -229,7 +242,6 @@ def to_dataset_folder(image_name, config, split):
   """
   Load a full image with relative ground truth and/or depth mask, crops them, and stores them.
   """
-  print("Names in dataset: ", names_in_dataset(config), " image name: ", image_name)
   if image_name in names_in_dataset(config):
     print(f"{image_name} already present in {config.dataset_name}, skipping")
     return
@@ -240,6 +252,8 @@ def to_dataset_folder(image_name, config, split):
   print("Saving..")
   split_path = os.path.join(config.working_dir, "datasets", config.dataset_name, split)
   for img_type, img_set in {"images": cropped_image, "masks": cropped_mask, "depths": cropped_depth}.items():
+    if img_set is None:
+       continue
     for i, image_array in enumerate(img_set):
         if img_type == "masks" or img_type == "depths":
           image_array = np.squeeze(image_array)

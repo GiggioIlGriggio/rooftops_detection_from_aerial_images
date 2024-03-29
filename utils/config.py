@@ -1,3 +1,5 @@
+import os
+
 ROOFTOP_IDS = [
     "31110000",
     "31110002",
@@ -31,40 +33,58 @@ ROOFTOP_IDS_REMOVE = [
     "31670000"
 ]
 
+INTERNALS_DICT = {
+    "TO1": {
+        "focal_px" : 100.500 / 0.0046,
+        "width" :  23010,
+        "height" : 14790,
+        "x_offset" : 0.,
+        "y_offset" : 0.,
+        "psize" : 0.0046
+    }
+}
+
 class Config:
     def __init__(self,
-                 config_name,           #Name of the configuration
-                 crop_size,             #Size of the crops
-                 step,                  #Step size
-                 scale_factor,          #Scale factor to rescale the images
-                 internals,             #Dictionary of the internal parameters of the camera
-                 batch_size,            
-                 model_name,            #"unet", "attunet", "unet_collection"
-                 num_epochs,            
-                 backbone = "VGG16",    #Backbone to use when "unet_collection" is selected
-                 pretrained = False,    #Use a pretrained backbone
-                 freeze_backbone = True,#Freeze backbone during training
-                 checkpoint = None,     #Path to model weights to upload
-                 dsm_path = "",         #Path to the folder containing all the LIDAR data
-                 dbfs_paths =  "",      #Path to the folder of dbf files containing external paramters
-                 polylines_path = "",   #Path to the folder of dxf files containing rooftop polygons
-                 buffer_path = "",      #Path to the dxf file containing buffer polygon
-                 depth_interpolation = True,    #Whether to interpolate the sparse matrix given by the LIDAR data
+                 #GENERAL
                  working_dir = "",      #Path to all the outputs of the model
+                 checkpoints_dir = "",           #Name of the configuration
+                 crop_size = 0,             #Size of the crops
+                 model_name = "",            #"unet", "attunet", "unet_collection"
+                 backbone = "",    #Backbone to use when "unet_collection" is selected
+                 checkpoint = None,     #Path to model weights to upload
+                 use_dsm = False,
+                 seed = 33,        
+                 #DATA PREPROCESSING
                  preprocessed_dataset_name = "",    #Name for the files after preprocessing
                  images_paths = [],     #List of all the paths of the images to use
-                 loss = "",             #String containing the loss to use separeted by a _. They can be "tversky", "iou" or "binary". Ex "binary_iou"
-                 val_names =  ['05_26_1892'],   #List of validation images names without extension
-                 seed = 33              
+                 internals = {},             #Dictionary of the internal parameters of the camera
+                 dsm_path = "",         #Path to the folder containing all the LIDAR data
+                 dbfs_path =  "",      #Path to the folder of dbf files containing external paramters
+                 polylines_path = "",   #Path to the dxf file containing rooftop polygons
+                 buffer_path = "",      #Path to the dxf file containing buffer polygon
+                 depth_interpolation = True,    #Whether to interpolate the sparse matrix given by the LIDAR data
+                 #DATASET CREATION
+                 dataset_name = "",
+                 val_names =  [],   #List of validation images names without extension
+                 scale_factor = 1,          #Scale factor to rescale the images
+                 step = 0,                  #Step size
+                 #TRAINING
+                 batch_size = 2,            
+                 num_epochs = 30,            
+                 pretrained = False,    #Use a pretrained backbone
+                 freeze_backbone = True,#Freeze backbone during training
+                 loss = "",             #String containing the losses to use separeted by a "_". They can be "tversky", "iou" or "binary". Ex "binary_iou"
+                 #EVALUATION
                  ):
         
-        self.config_name = config_name
+        self.checkpoints_dir = checkpoints_dir
         self.crop_size = crop_size
         self.step= step
         self.scale_factor = scale_factor
         self.batch_size = batch_size
         self.model_name = model_name
-        self.dbfs_paths= dbfs_paths
+        self.dbfs_path= dbfs_path
         self.dsm_path = dsm_path
         self.buffer_path = buffer_path
         self.depth_interpolation = depth_interpolation
@@ -80,9 +100,8 @@ class Config:
         self.freeze_backbone = freeze_backbone
         self.checkpoint = checkpoint
         self.num_epochs = num_epochs
-        
-        self.use_dsm = True if dsm_path != "" else False
+        self.dataset_name = dataset_name
+        self.use_dsm = use_dsm
+
         self.num_channels = 4 if self.use_dsm else 3
-        self.depth_name = "nodepth" if not self.use_dsm else "depthi" if self.depth_interpolation else "depth"
-        self.dataset_name = f"{crop_size}_{step}_{scale_factor}_{self.depth_name}"
         self.pretrained = "imagenet" if pretrained and self.num_channels == 3 else None

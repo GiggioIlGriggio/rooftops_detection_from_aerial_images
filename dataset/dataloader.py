@@ -108,7 +108,7 @@ def get_dataloaders(config):
             seed = seed
         )
     else:
-        validation_combined_generator = None
+        validation_depth_generator = None
 
     validation_combined_generator = my_image_mask_generator(validation_generator, validation_mask_generator, validation_depth_generator)
 

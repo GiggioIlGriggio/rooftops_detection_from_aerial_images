@@ -1,3 +1,4 @@
+import argparse
 from models.detection_models import get_model
 from tensorflow.keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, EarlyStopping
 import os
@@ -6,6 +7,30 @@ from PIL import Image
 
 from models.callbacks import DisplayCallback
 from dataset.dataloader import get_dataloaders
+from utils.config import Config
+
+Image.MAX_IMAGE_PIXELS = None
+
+parser = argparse.ArgumentParser(description='Script for preprocessing the data or store the preprocessed data to the drive.')
+parser.add_argument('working_dir', metavar='working_dir', type=str,
+                    help='Path to all the outputs of the model')
+parser.add_argument('model_name', type=str, choices=['unet', 'attunet'],
+                    help='Name of the model between "unet" and "attunet" ')
+parser.add_argument('dataset_name', type=str,
+                    help='Folder name of the output dataset')
+parser.add_argument('crop_size', type=int,
+                    help='Size of the crops')
+parser.add_argument('--use_dsm', action=argparse.BooleanOptionalAction,
+                    help='Whether preprocess also LIDAR data')
+parser.add_argument('batch_size', type=int,
+                    help='Number of images per batch')
+parser.add_argument('num_epochs', type=int,
+                    help='Number of epochs')
+parser.add_argument('loss', type=str,
+                    help='String containing the losses to use separeted by a "_". They can be "tversky", "iou" or "binary". Ex "binary_iou"')
+parser.add_argument('checkpoints_dir', type=str,
+                    help='Folder name of the output checkpoint weights')
+
 
 def run_training(config):
     train_generator, val_generator, train_samples, val_samples = get_dataloaders(config)
@@ -16,9 +41,9 @@ def run_training(config):
     
     checkpoints_folder = os.path.join(config.working_dir, "checkpoints")
     os.makedirs(checkpoints_folder, exist_ok= True)
-    checkpoint_config_folder = os.path.join(checkpoints_folder, config.config_name)
+    checkpoint_config_folder = os.path.join(checkpoints_folder, config.checkpoints_dir)
     os.makedirs(checkpoint_config_folder, exist_ok= True)
-    callback_checkpoint = ModelCheckpoint(os.path.join(checkpoint_config_folder,'{config.model_name}.{epoch:02d}-{val_binary_accuracy:.4f}.hdf5'), save_weights_only=True,
+    callback_checkpoint = ModelCheckpoint(os.path.join(checkpoint_config_folder,f'{config.model_name}'+'.{epoch:02d}-{val_binary_accuracy:.4f}.hdf5'), save_weights_only=True,
                                         save_best_only=True, monitor='val_binary_accuracy')
     # TODO handle unet3plus call checkpoint name
     
@@ -36,7 +61,7 @@ def run_training(config):
     callback_im = callback_im.astype(np.float32) / 255
     display_callback = DisplayCallback(callback_im, callback_mask, 5)
 
-    callbacks = [reduce_lr_callback, callback_checkpoint, display_callback]
+    callbacks = [reduce_lr_callback, display_callback, callback_checkpoint] #
 
     train_steps_per_epoch = train_samples // config.batch_size
     validation_steps_per_epoch = val_samples // config.batch_size
@@ -50,3 +75,20 @@ def run_training(config):
         #workers=2,
         #use_multiprocessing=True
     )
+def main():
+    args = parser.parse_args()
+    config = Config(
+        working_dir = args.working_dir,
+        model_name= args.model_name,
+        dataset_name= args.dataset_name,
+        crop_size= args.crop_size,
+        use_dsm= args.use_dsm,
+        batch_size= args.batch_size,
+        num_epochs= args.num_epochs,
+        loss= args.loss,
+        checkpoints_dir= args.checkpoints_dir
+    )
+    run_training(config)
+
+if __name__ == '__main__':
+    main()

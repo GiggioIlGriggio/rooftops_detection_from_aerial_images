@@ -11,6 +11,8 @@ import cv2
 import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
 
+Image.MAX_IMAGE_PIXELS = None
+
 class Camera:
 
     def __init__(self, focal_px, width, height, x_offset, y_offset, psize):
@@ -329,7 +331,7 @@ class AerialPicture(): # TODO implement function that looks for the internals pa
         if valid_models == []:
             print(f"No valid model found for the image {self.img_basename}")
         mask = np.zeros(self.image.shape[:2], dtype=np.float32)
-        print(f"Found {len(valid_models)}, starting projections...")
+        print(f"Found {len(valid_models)} valid LIDAR models, starting projections...")
         for model in valid_models:
             for x in range(model.width):   #TODO improve efficiency (remove for loops)
                 for y in range(model.height):
@@ -506,6 +508,9 @@ def preprocess_mask_image(mask, aerialImage, depth_mask, config):
     if depth_mask is not None:
         depth_mask_cut = depth_mask[bottom_index:top_index, left_index:right_index]
         depth_mask_cut = normalize_non_zero_elements(depth_mask_cut)
+        print(depth_mask_cut.shape)
+        print(depth_mask_cut.dtype)
+        print(np.count_nonzero(depth_mask_cut))
         if config.depth_interpolation:
             coords = np.column_stack(np.nonzero(depth_mask_cut))
             values = depth_mask_cut[coords[:, 0], coords[:, 1]]
@@ -519,8 +524,7 @@ def preprocess_mask_image(mask, aerialImage, depth_mask, config):
 
 
 def get_crop_index(crop_size, step, w, h):
-    """Return the crops indices. 
-
+    """Return the crops indices.
     In particular, it returns the indices of the top-left corner of the crops.
 
     Parameters

@@ -1,9 +1,11 @@
 /05.04_DDSM_1M
 /dbfs
 /images
+/images_TEST
 /working_dir
 /buffer1.dxf
 /DTP_TO_minuta_di_restituzione_01.dxf
 /__pycache__
 *.pyc
 *.pyo
+buildings-detection.ipynb

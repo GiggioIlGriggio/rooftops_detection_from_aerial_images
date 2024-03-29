@@ -1,0 +1,11 @@
+#PREPROCESS DATA
+python preprocess_data.py working_dir TEST_preprocess_dataset_name images_TEST TO1 --use_dsm 05.04_DDSM_1M dbfs DTP_TO_minuta_di_restituzione_01.dxf buffer1.dxf --depth_interpolation
+
+#CREATE DATASET
+python create_dataset.py working_dir TEST_dataset 256 128 TEST_preprocess_dataset_name 4 --use_dsm --val_names 02_65_1802
+
+#TRAINING
+python run.py working_dir unet TEST_dataset 256 --use_dsm 2 2 binary TEST_checkpoint_dir
+
+#INFERENCE
+python inference.py unet working_dir/checkpoints/TEST_checkpoint_dir/unet.02-0.7798.hdf5 working_dir/preprocessed_data/TEST_preprocess_dataset_name/imgs/02_65_1802.png working_dir/preprocessed_data/TEST_preprocess_dataset_name/depths/02_65_1802.png working_dir 256 4 --use_dsm
