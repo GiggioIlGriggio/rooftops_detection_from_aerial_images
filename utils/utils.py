@@ -10,6 +10,7 @@ from dbfread import DBF
 import cv2
 import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
+from tqdm import tqdm
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -218,8 +219,9 @@ class Dsm():
     Class that describes the LIDAR data.
     """
     def __init__(self, tif_path):
-        tfw_path = tif_path.replace(".tif", ".tfw")
-        self.x_pixel_size,  _, _, self.y_pixel_size, self.easting, self.northing = self.read_tfw(tfw_path)
+        self.tif_path = tif_path
+        self.tfw_path = tif_path.replace(".tif", ".tfw")
+        self.x_pixel_size,  _, _, self.y_pixel_size, self.easting, self.northing = self.read_tfw(self.tfw_path)
         self.tif_model = np.array(Image.open(tif_path))
         self.height, self.width = self.tif_model.shape
 
@@ -508,14 +510,15 @@ def preprocess_mask_image(mask, aerialImage, depth_mask, config):
     if depth_mask is not None:
         depth_mask_cut = depth_mask[bottom_index:top_index, left_index:right_index]
         depth_mask_cut = normalize_non_zero_elements(depth_mask_cut)
-        print(depth_mask_cut.shape)
-        print(depth_mask_cut.dtype)
-        print(np.count_nonzero(depth_mask_cut))
         if config.depth_interpolation:
+            original_shape = depth_mask_cut.shape
+            depth_mask_cut = max_pooling(depth_mask_cut, (20,20), (5,5))
             coords = np.column_stack(np.nonzero(depth_mask_cut))
             values = depth_mask_cut[coords[:, 0], coords[:, 1]]
             grid_x, grid_y = np.mgrid[0:depth_mask_cut.shape[0], 0:depth_mask_cut.shape[1]]
-            depth_mask_cut = griddata(coords, values, (grid_x, grid_y), method='cubic')
+            depth_mask_cut = griddata(coords, values, (grid_x, grid_y), method='linear')
+            depth_mask_cut = cv2.resize(depth_mask_cut, (original_shape[1], original_shape[0]))
+            depth_mask_cut = cv2.GaussianBlur(depth_mask_cut, (41, 41), 0)
         depth_mask_cut = (depth_mask_cut * 255).astype(np.uint8)
     else:
         depth_mask_cut = None
@@ -575,3 +578,50 @@ def get_crop_index(crop_size, step, w, h):
                 x_cur = w - crop_size
             crop_indices += [[y_cur, x_cur]]
     return crop_indices
+
+def max_pooling(image, pool_size=(2, 2), strides=(2, 2)):
+    """
+    Perform max pooling on the given grayscale image.
+
+    Parameters:
+        image (numpy.ndarray): Input grayscale image.
+        pool_size (tuple): Size of the pooling window (height, width).
+        strides (tuple): Strides of the pooling operation (vertical, horizontal).
+
+    Returns:
+        numpy.ndarray: Max-pooled image.
+    """
+    if image.dtype != np.uint8:
+        original_dtype = image.dtype
+        image = (image * 255).astype(np.uint8)
+    else:
+        original_dtype = False
+
+    # Get input image dimensions
+    height, width = image.shape
+
+    # Get pooling window dimensions
+    pool_height, pool_width = pool_size
+
+    # Get stride dimensions
+    stride_vertical, stride_horizontal = strides
+
+    # Calculate output dimensions
+    output_height = (height - pool_height) // stride_vertical + 1
+    output_width = (width - pool_width) // stride_horizontal + 1
+
+    # Create a view of image with the shape that allows windowed indexing
+    window_shape = (output_height, output_width, pool_height, pool_width)
+    strides = (stride_vertical * width, stride_horizontal, width, 1)
+    windowed_view = np.lib.stride_tricks.as_strided(image, shape=window_shape, strides=strides)
+
+    # Reshape the view to collapse the pooling window dimensions
+    collapsed_view = windowed_view.reshape(output_height, output_width, -1)
+
+    # Find the maximum value along the last axis (pooling window)
+    pooled_image = np.max(collapsed_view, axis=-1)
+
+    if original_dtype:
+        pooled_image = pooled_image.astype(np.float32)/255.
+
+    return pooled_image

@@ -1,13 +1,16 @@
 import argparse
 from models.detection_models import get_model
 from tensorflow.keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, EarlyStopping
+import tensorflow as tf
 import os
 import numpy as np
 from PIL import Image
+import glob 
 
 from models.callbacks import DisplayCallback
 from dataset.dataloader import get_dataloaders
 from utils.config import Config
+from models.losses import get_loss
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -61,20 +64,73 @@ def run_training(config):
     callback_im = callback_im.astype(np.float32) / 255
     display_callback = DisplayCallback(callback_im, callback_mask, 5)
 
-    callbacks = [reduce_lr_callback, display_callback, callback_checkpoint] #
+    callbacks = [display_callback, callback_checkpoint] #reduce_lr_callback
 
     train_steps_per_epoch = train_samples // config.batch_size
     validation_steps_per_epoch = val_samples // config.batch_size
+
+    num_epochs_1e3 = config.num_epochs//3 * 2
+    num_epochs_1e4 = config.num_epochs//6
+    num_epochs_1e5 = config.num_epochs//6
+
+    checkpoints_dir = os.path.join(config.working_dir,"checkpoints",config.checkpoints_dir)
+    if os.listdir(checkpoints_dir):
+        best_model_path = sorted(glob.glob(os.path.join(checkpoints_dir, '*.hdf5'), recursive=False))
+        print(f"Loading best model found at path {best_model_path}")
+        model.load_weights(best_model_path)
+    else:
+        print("Training model from scratch")
+    
+    print("Training with learning rate 1e-3")
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+              loss=get_loss(config.loss),
+              metrics=[tf.keras.metrics.BinaryAccuracy()])
+
     hist = model.fit(
         train_generator,
         steps_per_epoch=train_steps_per_epoch,
-        epochs=config.num_epochs,
+        epochs=num_epochs_1e3,
         validation_data=val_generator,
         validation_steps=validation_steps_per_epoch,
-        callbacks=callbacks,
-        #workers=2,
-        #use_multiprocessing=True
+        callbacks=callbacks
     )
+
+    print("Training with learning rate 1e-4")
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
+              loss=get_loss(config.loss),
+              metrics=[tf.keras.metrics.BinaryAccuracy()])
+    
+    best_model_path = sorted(glob.glob(os.path.join(checkpoints_dir, '*.hdf5'), recursive=False))
+    print(f"Loading best model found at path {best_model_path}")
+    model.load_weights(best_model_path)
+
+    hist = model.fit(
+        train_generator,
+        steps_per_epoch=train_steps_per_epoch,
+        epochs=num_epochs_1e4,
+        validation_data=val_generator,
+        validation_steps=validation_steps_per_epoch,
+        callbacks=callbacks
+    )
+
+    print("Training with learning rate 1e-5")
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
+              loss=get_loss(config.loss),
+              metrics=[tf.keras.metrics.BinaryAccuracy()])
+
+    best_model_path = sorted(glob.glob(os.path.join(checkpoints_dir, '*.hdf5'), recursive=False))
+    print(f"Loading best model found at path {best_model_path}")
+    model.load_weights(best_model_path)
+    
+    hist = model.fit(
+        train_generator,
+        steps_per_epoch=train_steps_per_epoch,
+        epochs=num_epochs_1e5,
+        validation_data=val_generator,
+        validation_steps=validation_steps_per_epoch,
+        callbacks=callbacks
+    )
+
 def main():
     args = parser.parse_args()
     config = Config(

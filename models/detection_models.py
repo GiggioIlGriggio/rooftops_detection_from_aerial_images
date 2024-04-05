@@ -6,8 +6,6 @@ from tensorflow import keras
 from tensorflow.keras.layers import Input, Conv2D, Dropout, Activation, UpSampling2D, GlobalMaxPooling2D, multiply
 from tensorflow.keras.backend import max
 
-from models.losses import get_loss
-
 
 def get_model(config):
     if config.model_name == "unet":
@@ -24,14 +22,6 @@ def get_model(config):
                            name='attunet')
     if config.model_name == "unet_3plus_2d":
         model = build_unet3plu2d((config.crop_size, config.crop_size, config.num_channels))
-
-    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
-              loss=get_loss(config.loss),
-              metrics=[tf.keras.metrics.BinaryAccuracy()])
-    
-    if config.checkpoint:
-        print(f"Importing weights at checkpoint {config.checkpoint}...")
-        model.load_weights(config.checkpoint)
 
     return model
 
