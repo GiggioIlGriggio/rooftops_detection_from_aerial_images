@@ -75,7 +75,8 @@ def run_training(config):
 
     checkpoints_dir = os.path.join(config.working_dir,"checkpoints",config.checkpoints_dir)
     if os.listdir(checkpoints_dir):
-        best_model_path = sorted(glob.glob(os.path.join(checkpoints_dir, '*.hdf5'), recursive=False))
+        best_model_ID = sorted([path[-11:] for path in glob.glob(os.path.join(checkpoints_dir, '*.hdf5'), recursive=False)])[-1]
+        best_model_path = [path for path in glob.glob(os.path.join(checkpoints_dir, '*.hdf5'), recursive=False) if best_model_ID in path][0]
         print(f"Loading best model found at path {best_model_path}")
         model.load_weights(best_model_path)
     else:
@@ -100,7 +101,8 @@ def run_training(config):
               loss=get_loss(config.loss),
               metrics=[tf.keras.metrics.BinaryAccuracy()])
     
-    best_model_path = sorted(glob.glob(os.path.join(checkpoints_dir, '*.hdf5'), recursive=False))
+    best_model_ID = sorted([path[-11:] for path in glob.glob(os.path.join(checkpoints_dir, '*.hdf5'), recursive=False)])[-1]
+    best_model_path = [path for path in glob.glob(os.path.join(checkpoints_dir, '*.hdf5'), recursive=False) if best_model_ID in path][0]
     print(f"Loading best model found at path {best_model_path}")
     model.load_weights(best_model_path)
 
@@ -118,7 +120,8 @@ def run_training(config):
               loss=get_loss(config.loss),
               metrics=[tf.keras.metrics.BinaryAccuracy()])
 
-    best_model_path = sorted(glob.glob(os.path.join(checkpoints_dir, '*.hdf5'), recursive=False))
+    best_model_ID = sorted([path[-11:] for path in glob.glob(os.path.join(checkpoints_dir, '*.hdf5'), recursive=False)])[-1]
+    best_model_path = [path for path in glob.glob(os.path.join(checkpoints_dir, '*.hdf5'), recursive=False) if best_model_ID in path][0]
     print(f"Loading best model found at path {best_model_path}")
     model.load_weights(best_model_path)
     
