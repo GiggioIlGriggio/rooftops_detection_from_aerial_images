@@ -37,10 +37,11 @@ def inference():
     )
     print(config.num_channels)
     model = get_model(config)
+    model.load_weights(config.checkpoint)
     pred_rescaled = predict_on_img(model,
                                     img_path= args.img_path,
                                     depth_mask_path= args.depth_mask_path if args.use_dsm else "",
-                                    batch_size=config.batch_size,
+                                    batch_size=4,
                                     crop_size= config.crop_size,
                                     step= config.step,
                                     scale_factor= config.scale_factor,

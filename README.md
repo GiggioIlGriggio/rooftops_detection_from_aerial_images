@@ -129,6 +129,22 @@ python inference.py unet working_dir/checkpoints/TEST_checkpoint_dir/unet.02-0.7
 * `scale_factor`
 * `--use_dsm`: Bool, if set to False will ignore `depth_mask_path`
 
+Evaluation of a model
+
+python evaluation.py attunet v1_att_no_depths working_dir preprocessed_v1 256 4 --save_inference --no-use_dsm --val_names 05_25_1929 03_09_5074 05_27_1871 02_65_1802 03_16_5681
+
+`evaluation.py` arguments:
+
+* `model_name`:"unet" or "attunet"
+* `checkpoint_dir`: name of the folder where checkpoints for the specified model are stored. This folder should be inside the "checkpoints" fodler and all results will be stored there. The script automatically founds the better checkpoint based on the accuracy specified in the name as the last 5 digits.
+* `working_dir`
+* `preprocessed_dataset_name`: name of the preprocessed data folder to use as evaluation
+* `crop_size`
+* `scale_factor`
+* `--save_inference`: Bool, if set to True inferece output of the images will be stored in the checkpoint folder.
+* `--use_dsm`: Bool, if set to False will ignore `depth_mask_path`
+* `--val_names`: List of strings with the name of the images to be used as validation without extension. Those images must be contained in the preprocessed data.
+
 ## Understand the arguments
 
 The core structure which manages the repo is the Config class, in which all the arguments are contained.

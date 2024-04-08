@@ -625,3 +625,9 @@ def max_pooling(image, pool_size=(2, 2), strides=(2, 2)):
         pooled_image = pooled_image.astype(np.float32)/255.
 
     return pooled_image
+
+def convert_to_serializable(obj):
+    # Convert non-serializable values to serializable types
+    if isinstance(obj, np.float32):
+        return float(obj)  # Convert float32 to regular float
+    return obj

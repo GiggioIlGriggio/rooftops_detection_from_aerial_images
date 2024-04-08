@@ -81,7 +81,7 @@ def predict_on_img(model, img_path, depth_mask_path, batch_size, crop_size, step
     img = np.array(Image.open(img_path))
 
     img = cv2.resize(img, (img.shape[1]//scale_factor, img.shape[0]//scale_factor))
-    if depth_mask_path != "":
+    if depth_mask_path is not None:
         depth_mask = np.array(Image.open(depth_mask_path))
         depth_mask = cv2.resize(depth_mask, (depth_mask.shape[1]//scale_factor, depth_mask.shape[0]//scale_factor))
         depth_mask = np.expand_dims(depth_mask, axis=-1)
@@ -114,7 +114,7 @@ def predict_on_img(model, img_path, depth_mask_path, batch_size, crop_size, step
         prefetch(buffer_size=5)
 
     # Iterate on each crop
-    print(f"Running inference on{os.path.basename(img_path)}...")
+    print(f"Running inference on {os.path.basename(img_path)}...")
     for crops, index in tqdm(gen):
         # Binary predictions on that crop
         crop_preds = model.predict(crops, verbose = 0)
@@ -136,7 +136,7 @@ def predict_on_img(model, img_path, depth_mask_path, batch_size, crop_size, step
 
     return preds
 
-def compute_metrics_all_val(model, config):
+def compute_metrics_all_val(model, config, save_inference = False):
     val_img_paths = [os.path.join(config.working_dir,"preprocessed_data",config.preprocessed_dataset_name,"imgs", name + '.png') for name in config.val_names]
     val_depth_paths = [os.path.join(config.working_dir,"preprocessed_data",config.preprocessed_dataset_name,"depths", name + '.png') for name in config.val_names]
     val_mask_paths = [os.path.join(config.working_dir,"preprocessed_data",config.preprocessed_dataset_name,"masks", name + '.png') for name in config.val_names]
@@ -153,19 +153,28 @@ def compute_metrics_all_val(model, config):
         val_depth_paths = [None] * len(val_img_paths)
 
     for img_path, depth_path, mask_path in zip(val_img_paths,val_depth_paths,val_mask_paths):
-        print(os.path.basename(img_path), os.path.basename(depth_path), os.path.basename(mask_path))
         pred_rescaled = predict_on_img(model, img_path, depth_path, config.batch_size, config.crop_size, config.step, config.scale_factor)
         ground_truth = np.array(Image.open(mask_path))
         out_of_ROI = get_number_of_black_pixels(img_path)
         weight = ground_truth.shape[0] * ground_truth.shape[1]
-        weights_effective.append(weight - out_of_ROI)
+        weight_effective = weight - out_of_ROI
+        weights_effective.append(weight_effective)
         pred = cv2.resize(pred_rescaled, (ground_truth.shape[1], ground_truth.shape[0]))
+        
+        if save_inference:
+            print("Saving predictions as png...")
+            pred_save = pred * 255
+            pred_binary = (pred > 0.5) * 255
+            cv2.imwrite(os.path.join(config.working_dir,"checkpoints",config.checkpoints_dir, "pred_" + os.path.basename(img_path)), pred_save)
+            cv2.imwrite(os.path.join(config.working_dir,"checkpoints",config.checkpoints_dir, "pred_binary_" + os.path.basename(img_path)), pred_binary)
 
         weights.append(weight)
         
+        print("Computing auroc...")
         metrics_dict = compute_pixelwise_retrieval_metrics(np.expand_dims(pred, axis = 0), np.expand_dims(ground_truth, axis = 0))
         aurocs.append(metrics_dict["auroc"])
         
+        print("Computing binary accuracy with optimal threshold...")
         optimal_th = metrics_dict["optimal_threshold"]
         acc_best = tf.keras.metrics.BinaryAccuracy(threshold=optimal_th)
         acc_best.update_state(ground_truth, pred)
@@ -173,6 +182,7 @@ def compute_metrics_all_val(model, config):
         acc_best_fix = fix_acc(acc_best.result().numpy(), out_of_ROI, weight)
         accuracies_best_fix.append(acc_best_fix)
 
+        print("Computing binary accuracy...")
         acc = tf.keras.metrics.BinaryAccuracy()
         acc.update_state(ground_truth, pred)
         accuracies.append(acc.result().numpy())
@@ -194,13 +204,15 @@ def compute_metrics_all_val(model, config):
             "accuracies_fix": accuracies_fix,
             "accuracies_best": accuracies_best,
             "accuracies_best_fix": accuracies_best_fix, 
+
             "aurocs": aurocs, 
             "weights": weights,
-            "weights_effective": weights_effective,
-            "total_a cc": total_acc,
-            "total_acc_fix": total_acc_fix}
+            #"weights_effective": weights_effective,
+            "total_acc": total_acc,
+            "total_acc_fix": total_acc_fix
+            }
     
-    return ret_dict["total_acc_fix"]
+    return ret_dict
                
 def get_number_of_black_pixels(img_path):
     img = np.array(Image.open(img_path))
